@@ -3,30 +3,29 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
-struct SymbolNode {
-	char *symbol;
-};
+#define MAX_SIZE 32768
 
 struct SymbolTable {
 	int head;
-	struct SymbolNode *table[32768];
+	char **table;
 };
 
 FILE *initData(int argc, char **argv); 
-char *initSourceString(FILE *f, long *sourceSize); 
+void initSourceString(FILE *f, long *sourceSize, char **sourceString); 
 void encodeData(char *source, long sourceSize, char *output, struct SymbolTable *dict); 
 void writeToFile(char *output, bool byte, uint16_t code, char character); 
 struct SymbolTable *initSymbolTable();
 void freeSymbolTable(struct SymbolTable *dict); 
+bool stringInSymbolTable(struct SymbolTable *dict, char *string); 
 
 
 int main(int argc, char** argv) {
     FILE *f = initData(argc, argv);
     char *output = argv[2];
     long sourceSize = 0;
+    char *source; 
 
-    char *source = initSourceString(f, &sourceSize);
-    printf("sourceSize: %ld", sourceSize);
+    initSourceString(f, &sourceSize, &source);
     struct SymbolTable *dict = initSymbolTable();
     encodeData(source, sourceSize, output, dict);
 
@@ -56,18 +55,16 @@ FILE *initData(int argc, char **argv) {
  *  Reads all the data in from the input file into a
  *  dynamically allocated string.
  */ 
-char *initSourceString(FILE *f, long *sourceSize) {
+void initSourceString(FILE *f, long *sourceSize, char **sourceString) {
     fseek(f, 0, SEEK_END);
     long fileSize = ftell(f);
-    printf("fileSize: %ld", fileSize);
-    char *sourceString = (char *)malloc(sizeof(fileSize + 1) * sizeof(char));
+    *sourceString = (char *)malloc((fileSize + 1) * sizeof(char));
 
     fseek(f, 0, SEEK_SET);
-    *sourceSize = fread(sourceString, sizeof(char), fileSize, f);
-    sourceString[*sourceSize] = '\0';
-
+    *sourceSize = fread(*sourceString, sizeof(char), fileSize, f);
     fclose(f);
-    return sourceString;
+
+    (*sourceString)[*sourceSize] = '\0';
 }
 
 /*
@@ -83,34 +80,22 @@ struct SymbolTable *initSymbolTable() {
 
     newDict->head = 0;
 
+    newDict->table = (char **)malloc(sizeof(char *) * MAX_SIZE);
+    for (int i=0 ; i < MAX_SIZE ; i++) {
+        newDict->table[i] = NULL;
+    }
+
     return newDict;
 }
 
 void freeSymbolTable(struct SymbolTable *dict) {
     for (int i = 0 ; i < 32768 ; i++) {
         if (dict->table[i] != NULL) {
-            free(dict->table[i]->symbol);
+            free(dict->table[i]);
         }
-        free(dict->table[i]);
     }
+    free(dict->table);
     free(dict);
-}
-
-struct SymbolNode *newDictEntry(const char *string) {
-    struct SymbolNode *newEntry = (struct SymbolNode *)malloc(sizeof(struct SymbolNode));
-    if (newEntry == NULL) {
-        printf("Unable to allocate SymbolNode");
-        return NULL;
-    }
-
-    newEntry->symbol = (char *)malloc((strlen(string) + 1) * sizeof(char));
-    if (newEntry->symbol == NULL) {
-        printf("Malloc failed for dict entry symbol");
-        return NULL;
-    }
-    strcpy(newEntry->symbol, string);
-
-    return newEntry;
 }
 
 /*
@@ -118,16 +103,40 @@ struct SymbolNode *newDictEntry(const char *string) {
  *  outputting the result to a file named by the output parameter
  */
 void encodeData(char *source, long sourceSize, char *output, struct SymbolTable *dict) {
-    char cur; 
+    char cur[2] = ""; 
     char *prevSymbol = NULL;
-    char prevChar = cur;
+    char prevChar[2]; 
+    snprintf(prevChar, 2, "%s", cur);
+
+    printf("%s", source);
+
     for (long i = 0 ; i < sourceSize ; i++) {
-        cur = source[i];
-        printf("cur: %c\n", cur);
-        printf("prev: %c\n", prevChar);
-        prevChar = cur;
-        // TODO - Start implementing trie data structure (or research better ds)
+        snprintf(cur, 2, "%c", source[i]);
+
+        printf("cur: %s\n", cur);
+        printf("prev: %s\n", prevChar);
+
+        snprintf(prevChar, 2, "%s", cur);
+
+        if (stringInSymbolTable(dict, cur)) {
+            printf("hello\n");
+        } else {
+
+        }
+        printf("\n");
     }
+}
+
+/*
+ *  Abstracted function - Checks if a given string is in the dictionary / table
+ */
+bool stringInSymbolTable(struct SymbolTable *dict, char *string) {
+    for (int i = 0 ; i < MAX_SIZE ; i++) {
+        if (dict->table[i] != NULL && strcmp(string, dict->table[i]) == 0) {
+            return true;
+        }
+    }
+    return false;
 }
 
 /*
