@@ -1,9 +1,12 @@
 #include <stdio.h>
 #include <strings.h>
+#include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <inttypes.h>
 
 #define MAX_SIZE 32768
+extern char* strdup(const char*);
 
 struct SymbolTable {
 	int head;
@@ -120,7 +123,7 @@ void printCharAsBinary(char ch) {
  */
 void encodeData(char *source, long sourceSize, char *output, struct SymbolTable *dict) {
     // String holding p (and size)
-    char *prev = (char*)malloc(sizeof(char));
+    char *prev = (char*)calloc(1, sizeof(char)+1);
     long prevSize = 0;
     char cur = '\0'; 
 
@@ -185,6 +188,11 @@ void encodeData(char *source, long sourceSize, char *output, struct SymbolTable 
     free(pc);
     free(prev);
     printf("\nFINAL-%s\n", encodedString);
+	for (int i=0;i<10;i++) {
+		if (dict->table[i] != NULL) {
+			printf("%d: %s\n",i,dict->table[i]);
+		}
+	}
     /* fwrite(encodedString, strlen(encodedString), 1, f); */
     fclose(f);
 }
