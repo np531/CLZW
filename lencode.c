@@ -187,6 +187,7 @@ void encodeData(char *source, long sourceSize, char *output, struct SymbolTable 
     }
     free(pc);
     free(prev);
+	printf("Num entries: %d", dict->head);
     printf("\nFINAL-%s\n", encodedString);
 	for (int i=0;i<10;i++) {
 		if (dict->table[i] != NULL) {
