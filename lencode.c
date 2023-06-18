@@ -16,7 +16,7 @@ struct KeyValue {
 struct SymbolTable {
 	int head;
 	char **table;
-	struct KeyValue hashMap[MAX_SIZE];
+	struct KeyValue *hashMap[MAX_SIZE];
 };
 
 FILE *initData(int argc, char **argv); 
@@ -30,11 +30,83 @@ bool stringInSymbolTable(struct SymbolTable *dict, char *string, long pcSize, ui
 
 // HashMap Helper Functions
 uint32_t hash(char *key) {
-	uint32_t hashValue = 0;
+	// Hash algorithm inspired by djb2 by Dan Bernstein
+	// Found to be quite efficient in reducing the number of collisions
+	uint32_t hashValue = 5381;
+	uint32_t cur;
+	
+	while ((cur = *key++)) {
+		hashValue = cur + (hashValue + (hashValue << 5));
+	}
 
-
-	return hashValue;
+	return hashValue % MAX_SIZE;
 }
+
+struct KeyValue *initKeyValue(char *key, int value) {
+	struct KeyValue *pair = (struct KeyValue *)malloc(sizeof(struct KeyValue));
+	pair->value =  value;
+	pair->key = strdup(key);
+	if (pair == NULL) {
+		printf("Unable to allocate memory for key-value pair\n");
+		exit(1);
+	}
+
+	return pair;
+}
+
+// TODO - REPLACE LINEAR PROBING WITH SEPARATE CHAINING TO AVOID 15 BIT LOOKUPS WHEN TABLE IS FULL
+int get(struct SymbolTable *dict, char *key) {
+	uint32_t index = hash(key);
+	
+	// Insert into hashmap (handling collisions with linear probing)
+	int count = 0;
+	while (count < MAX_SIZE) {
+		count++;
+
+		if (dict->hashMap[index] == NULL) {
+			break;
+		}
+
+		if (dict->hashMap[index] != NULL && strcmp(dict->hashMap[index]->key, key) == 0) {
+			return dict->hashMap[index]->value;
+		}
+
+		index = (index + 1) % MAX_SIZE;
+
+	}
+	return -1;
+}
+
+bool keyInTable(struct SymbolTable *dict, char *key) {
+	return get(dict, key) != -1;
+}
+
+void insert(struct SymbolTable *dict, char *key) {
+	if (dict->head < MAX_SIZE && !keyInTable(dict, key)) { 
+		// Hash the key
+		uint32_t index = hash(key);
+		
+		// Insert into hashmap (handling collisions with linear probing)
+		int count = 0;
+		while (count < MAX_SIZE) {
+			count++;
+
+			if (dict->hashMap[index] == NULL) {
+				dict->hashMap[index] = initKeyValue(key, dict->head);
+				break;
+			}
+
+			index = (index + 1) % MAX_SIZE;
+
+		}
+		
+		// Insert into table
+		dict->table[dict->head] = strdup(key);
+		dict->head++;
+	}
+
+}
+
 
 
 // Encode Algorithm
@@ -48,7 +120,7 @@ int main(int argc, char** argv) {
     struct SymbolTable *dict = initSymbolTable();
     encodeData(source, sourceSize, output, dict);
 
-    freeSymbolTable(dict);
+    /* freeSymbolTable(dict); */
     return 0;
 }
 
@@ -102,6 +174,7 @@ struct SymbolTable *initSymbolTable() {
     newDict->table = (char **)malloc(sizeof(char *) * MAX_SIZE);
     for (int i=0 ; i < MAX_SIZE ; i++) {
         newDict->table[i] = NULL;
+		newDict->hashMap[i] = NULL;
     }
 
     return newDict;
@@ -172,10 +245,7 @@ void encodeData(char *source, long sourceSize, char *output, struct SymbolTable 
             prevSize = pcSize;
         } else {
             // Add pc to dict
-			if (dict->head < MAX_SIZE) { 
-				dict->table[dict->head] = strdup(pc);
-				dict->head++;
-			}
+			insert(dict, pc);
 
             // Output code(p)
 			outputCode(prevSize, prev, code, f);
@@ -241,14 +311,21 @@ bool stringInSymbolTable(struct SymbolTable *dict, char *string, long pcSize, ui
         return true;
     }
 
-    // Otherwise perform a linear search of the symbolTable table
-    for (int i = 0 ; i < MAX_SIZE ; i++) {
-        if (dict->table[i] != NULL && strcmp(string, dict->table[i]) == 0) {
-			// stores 15-bit dict reference
-            *code = i;
-            return true;
-        }
-    }
+	// Linear search implementation
+    /* for (int i = 0 ; i < MAX_SIZE ; i++) { */
+    /*     if (dict->table[i] != NULL && strcmp(string, dict->table[i]) == 0) { */
+			/* // stores 15-bit dict reference */
+    /*         *code = i; */
+    /*         return true; */
+    /*     } */
+    /* } */
+
+	// Hashmap implementation
+	if (keyInTable(dict, string)) {
+		*code = get(dict, string);
+		return true;
+	}
+
     return false;
 }
 
