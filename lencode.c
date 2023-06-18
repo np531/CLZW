@@ -16,7 +16,7 @@ void encodeData(char *source, long sourceSize, char *output, struct SymbolTable 
 void writeToFile(char *output, bool byte, uint16_t code, char character); 
 struct SymbolTable *initSymbolTable();
 void freeSymbolTable(struct SymbolTable *dict); 
-bool stringInSymbolTable(struct SymbolTable *dict, char *string); 
+bool stringInSymbolTable(struct SymbolTable *dict, char *string, long pcSize, uint16_t* code); 
 
 
 int main(int argc, char** argv) {
@@ -98,41 +98,110 @@ void freeSymbolTable(struct SymbolTable *dict) {
     free(dict);
 }
 
+void printUInt16AsBinary(uint16_t value) {
+    for (int i = sizeof(uint16_t) * 8 - 1; i >= 0; i--) {
+        uint16_t mask = (uint16_t)1 << i;
+        int bit = (value & mask) ? 1 : 0;
+        printf("%d", bit);
+    }
+    printf("\n");
+}
+
+void printCharAsBinary(char ch) {
+    for (int i = 7; i >= 0; i--) {
+        char bit = (ch >> i) & 1;
+        printf("%d", bit);
+    }
+}
+
 /*
  *  Applies LZW compression on the data of a given file, 
  *  outputting the result to a file named by the output parameter
  */
 void encodeData(char *source, long sourceSize, char *output, struct SymbolTable *dict) {
-    char cur[2] = ""; 
-    char *prevSymbol = NULL;
-    char prevChar[2]; 
-    snprintf(prevChar, 2, "%s", cur);
+    // String holding p (and size)
+    char *prev = (char*)malloc(sizeof(char));
+    long prevSize = 0;
+    char cur = '\0'; 
 
-    printf("%s", source);
+    // String holding the concatenation of p and c (and size)
+    char *pc = strdup("");
+    long pcSize = 0;
+    
+    // code temporarily stores the binary representation of a dictionary reference 
+    uint16_t code = 0;
+    char LHS;
+    char RHS;
+    char *encodedString = (char*)malloc(sourceSize); 
+    FILE *f = fopen(output, "wb");
 
     for (long i = 0 ; i < sourceSize ; i++) {
-        snprintf(cur, 2, "%c", source[i]);
+        cur = source[i];
 
-        printf("cur: %s\n", cur);
-        printf("prev: %s\n", prevChar);
+        printf("cur: %c\n", cur);
+        printf("prev: %s\n", prev);
 
-        snprintf(prevChar, 2, "%s", cur);
 
-        if (stringInSymbolTable(dict, cur)) {
-            printf("hello\n");
+        // TODO - Handle case when dictionary is full
+        // TODO - replace strlen with DS to store prev size (to handle null bytes)
+        pcSize = strlen(prev) + sizeof(char) + 1;
+        pc = (char*)realloc(pc, pcSize);
+        snprintf(pc, pcSize, "%s%c", prev, cur);
+        printf("%s\n", pc);
+        printf("%ld\n", prevSize);
+
+        if (stringInSymbolTable(dict, pc, pcSize, &code)) {
+            free(prev);
+            prev = strdup(pc);
+            prevSize = pcSize;
         } else {
+            // Add pc to dict
+            dict->table[dict->head] = strdup(pc);
+            dict->head++;
+
+            // Output code(p)
+            if (prevSize <= 2) {
+                /* strlcat(encodedString, prev, sourceSize); */
+                fwrite(prev, 1, 1, f);
+            } else {
+                code = (((1) << (sizeof(uint16_t)*8-1) ) | code);
+                printUInt16AsBinary(code);
+                LHS = (char)(code >> 8);
+                RHS = (char)code;
+                /* strncat(encodedString, &LHS, 1); */
+                /* strncat(encodedString, &RHS, 1); */
+                fwrite(&LHS, sizeof(uint8_t), 1, f);
+                fwrite(&RHS, sizeof(uint8_t), 1, f);
+            }
+
+            // p = c
+            prev = (char*)realloc(prev, sizeof(char)+1);
+            snprintf(prev, 2, "%c", cur);
+            prevSize = 2;
 
         }
         printf("\n");
     }
+    free(pc);
+    free(prev);
+    printf("\nFINAL-%s\n", encodedString);
+    /* fwrite(encodedString, strlen(encodedString), 1, f); */
+    fclose(f);
 }
 
 /*
  *  Abstracted function - Checks if a given string is in the dictionary / table
  */
-bool stringInSymbolTable(struct SymbolTable *dict, char *string) {
+bool stringInSymbolTable(struct SymbolTable *dict, char *string, long pcSize, uint16_t* code) {
+    // Case where the concat of prev and cur is a single character
+    if (pcSize == 2) {
+        return true;
+    }
+
+    // Otherwise perform a linear search of the symbolTable table
     for (int i = 0 ; i < MAX_SIZE ; i++) {
         if (dict->table[i] != NULL && strcmp(string, dict->table[i]) == 0) {
+            *code = i;
             return true;
         }
     }
