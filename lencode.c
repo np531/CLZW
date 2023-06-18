@@ -8,20 +8,36 @@
 #define MAX_SIZE 32768
 extern char* strdup(const char*);
 
+struct KeyValue {
+	char *key;
+	int value;
+};
+
 struct SymbolTable {
 	int head;
 	char **table;
+	struct KeyValue hashMap[MAX_SIZE];
 };
 
 FILE *initData(int argc, char **argv); 
 void initSourceString(FILE *f, long *sourceSize, char **sourceString); 
 void encodeData(char *source, long sourceSize, char *output, struct SymbolTable *dict); 
+void outputCode(long prevSize, char *prev, uint16_t code, FILE* f);
 void writeToFile(char *output, bool byte, uint16_t code, char character); 
 struct SymbolTable *initSymbolTable();
 void freeSymbolTable(struct SymbolTable *dict); 
 bool stringInSymbolTable(struct SymbolTable *dict, char *string, long pcSize, uint16_t* code); 
 
+// HashMap Helper Functions
+uint32_t hash(char *key) {
+	uint32_t hashValue = 0;
 
+
+	return hashValue;
+}
+
+
+// Encode Algorithm
 int main(int argc, char** argv) {
     FILE *f = initData(argc, argv);
     char *output = argv[2];
@@ -41,13 +57,13 @@ int main(int argc, char** argv) {
  */
 FILE *initData(int argc, char **argv) {
     if (argc != 3) {
-        printf("Incorrect arguments supplied");
+        printf("Incorrect arguments supplied\n");
         exit(1);
     }
 
     FILE *f = fopen(argv[1], "rb");
     if (f == NULL) {
-        printf("Given file does not exist");
+        printf("Given file does not exist\n");
         exit(1);
     }
 
@@ -77,7 +93,7 @@ void initSourceString(FILE *f, long *sourceSize, char **sourceString) {
 struct SymbolTable *initSymbolTable() {
     struct SymbolTable *newDict = (struct SymbolTable *)malloc(sizeof(struct SymbolTable));
     if (newDict == NULL) {
-        printf("Memory alloc for symbol table failed");
+        printf("Memory alloc for symbol table failed\n");
         exit(1);
     }
 
@@ -127,55 +143,42 @@ void encodeData(char *source, long sourceSize, char *output, struct SymbolTable 
     long prevSize = 0;
     char cur = '\0'; 
 
-    // String holding the concatenation of p and c (and size)
+    // String holding the concatenation of prev and cur (and size)
     char *pc = strdup("");
     long pcSize = 0;
     
     // code temporarily stores the binary representation of a dictionary reference 
     uint16_t code = 0;
-    char LHS;
-    char RHS;
     char *encodedString = (char*)malloc(sourceSize); 
     FILE *f = fopen(output, "wb");
 
+	// Flag set to true if the current pc is in the dict (used to handle cases
+	// when the last sequence of characters are in the dict, and thus nothing is output)
+	bool inTable;
+
     for (long i = 0 ; i < sourceSize ; i++) {
         cur = source[i];
+		inTable = false;
 
-        printf("cur: %c\n", cur);
-        printf("prev: %s\n", prev);
-
-
-        // TODO - Handle case when dictionary is full
         // TODO - replace strlen with DS to store prev size (to handle null bytes)
         pcSize = strlen(prev) + sizeof(char) + 1;
         pc = (char*)realloc(pc, pcSize);
         snprintf(pc, pcSize, "%s%c", prev, cur);
-        printf("%s\n", pc);
-        printf("%ld\n", prevSize);
 
         if (stringInSymbolTable(dict, pc, pcSize, &code)) {
+			inTable = true;
             free(prev);
             prev = strdup(pc);
             prevSize = pcSize;
         } else {
             // Add pc to dict
-            dict->table[dict->head] = strdup(pc);
-            dict->head++;
+			if (dict->head < MAX_SIZE) { 
+				dict->table[dict->head] = strdup(pc);
+				dict->head++;
+			}
 
             // Output code(p)
-            if (prevSize <= 2) {
-                /* strlcat(encodedString, prev, sourceSize); */
-                fwrite(prev, 1, 1, f);
-            } else {
-                code = (((1) << (sizeof(uint16_t)*8-1) ) | code);
-                printUInt16AsBinary(code);
-                LHS = (char)(code >> 8);
-                RHS = (char)code;
-                /* strncat(encodedString, &LHS, 1); */
-                /* strncat(encodedString, &RHS, 1); */
-                fwrite(&LHS, sizeof(uint8_t), 1, f);
-                fwrite(&RHS, sizeof(uint8_t), 1, f);
-            }
+			outputCode(prevSize, prev, code, f);
 
             // p = c
             prev = (char*)realloc(prev, sizeof(char)+1);
@@ -183,10 +186,22 @@ void encodeData(char *source, long sourceSize, char *output, struct SymbolTable 
             prevSize = 2;
 
         }
-        printf("\n");
+        /* printf("\n"); */
     }
+	printf("%s\n", pc);
+	printf("|%s|\n", prev);
+	printf("|%c|\n", cur);
+	printf("%ld\n", prevSize);
+
+	if (inTable) {
+		outputCode(prevSize, prev, code, f);
+	} else {
+		fwrite(&cur, 1,1,f);
+	}
+
     free(pc);
     free(prev);
+
 	printf("Num entries: %d", dict->head);
     printf("\nFINAL-%s\n", encodedString);
 	for (int i=0;i<10;i++) {
@@ -196,6 +211,25 @@ void encodeData(char *source, long sourceSize, char *output, struct SymbolTable 
 	}
     /* fwrite(encodedString, strlen(encodedString), 1, f); */
     fclose(f);
+}
+
+/*
+ *	Given the required data, outputs either the raw prev string, or a 
+ *	reference to the dict
+ */
+void outputCode(long prevSize, char *prev, uint16_t code, FILE* f) {
+	if (prevSize <= 2) {
+		fwrite(prev, 1, 1, f);
+	} else if (prevSize == 3) {
+		fwrite(prev, 1 , 2, f);	
+	} else {
+		code = (((1) << (sizeof(uint16_t)*8-1) ) | code);
+		/* printUInt16AsBinary(code); */
+		char LHS = (char)(code >> 8);
+		char RHS = (char)code;
+		fwrite(&LHS, sizeof(uint8_t), 1, f);
+		fwrite(&RHS, sizeof(uint8_t), 1, f);
+	}
 }
 
 /*
@@ -210,6 +244,7 @@ bool stringInSymbolTable(struct SymbolTable *dict, char *string, long pcSize, ui
     // Otherwise perform a linear search of the symbolTable table
     for (int i = 0 ; i < MAX_SIZE ; i++) {
         if (dict->table[i] != NULL && strcmp(string, dict->table[i]) == 0) {
+			// stores 15-bit dict reference
             *code = i;
             return true;
         }
