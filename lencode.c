@@ -11,6 +11,7 @@ extern char* strdup(const char*);
 struct KeyValue {
 	char *key;
 	int value;
+	struct KeyValue *next;
 };
 
 struct SymbolTable {
@@ -44,12 +45,14 @@ uint32_t hash(char *key) {
 
 struct KeyValue *initKeyValue(char *key, int value) {
 	struct KeyValue *pair = (struct KeyValue *)malloc(sizeof(struct KeyValue));
-	pair->value =  value;
-	pair->key = strdup(key);
 	if (pair == NULL) {
 		printf("Unable to allocate memory for key-value pair\n");
 		exit(1);
 	}
+
+	pair->next = NULL;
+	pair->value =  value;
+	pair->key = strdup(key);
 
 	return pair;
 }
@@ -58,23 +61,34 @@ struct KeyValue *initKeyValue(char *key, int value) {
 int get(struct SymbolTable *dict, char *key) {
 	uint32_t index = hash(key);
 	
-	// Insert into hashmap (handling collisions with linear probing)
-	int count = 0;
-	while (count < MAX_SIZE) {
-		count++;
-
-		if (dict->hashMap[index] == NULL) {
-			break;
+	// Separate Chaining retrieval
+	if (dict->hashMap[index] != NULL) {
+		struct KeyValue *cur = dict->hashMap[index];
+		while (cur != NULL) {
+			if (strcmp(cur->key, key) == 0) {
+				return cur->value;
+			}
+			cur = cur->next;
 		}
-
-		if (dict->hashMap[index] != NULL && strcmp(dict->hashMap[index]->key, key) == 0) {
-			return dict->hashMap[index]->value;
-		}
-
-		index = (index + 1) % MAX_SIZE;
-
 	}
 	return -1;
+	
+	// Linear Probing retrieval
+	/* int count = 0; */
+	/* while (count < MAX_SIZE) { */
+	/* 	count++; */
+
+	/* 	if (dict->hashMap[index] == NULL) { */
+	/* 		break; */
+	/* 	} */
+
+	/* 	if (dict->hashMap[index] != NULL && strcmp(dict->hashMap[index]->key, key) == 0) { */
+	/* 		return dict->hashMap[index]->value; */
+	/* 	} */
+
+	/* 	index = (index + 1) % MAX_SIZE; */
+
+	/* } */
 }
 
 bool keyInTable(struct SymbolTable *dict, char *key) {
@@ -85,20 +99,32 @@ void insert(struct SymbolTable *dict, char *key) {
 	if (dict->head < MAX_SIZE && !keyInTable(dict, key)) { 
 		// Hash the key
 		uint32_t index = hash(key);
+
+		// Insert into hashmap (separate chaining)
+		// find insertion point
+		if (dict->hashMap[index] == NULL) {
+			dict->hashMap[index] = initKeyValue(key, dict->head);
+		} else {
+			struct KeyValue *cur = dict->hashMap[index];
+			while (cur->next != NULL) {
+				cur = cur->next;
+			}
+			cur->next = initKeyValue(key, dict->head); 
+		}
 		
 		// Insert into hashmap (handling collisions with linear probing)
-		int count = 0;
-		while (count < MAX_SIZE) {
-			count++;
+		/* int count = 0; */
+		/* while (count < MAX_SIZE) { */
+		/* 	count++; */
 
-			if (dict->hashMap[index] == NULL) {
-				dict->hashMap[index] = initKeyValue(key, dict->head);
-				break;
-			}
+		/* 	if (dict->hashMap[index] == NULL) { */
+		/* 		dict->hashMap[index] = initKeyValue(key, dict->head); */
+		/* 		break; */
+		/* 	} */
 
-			index = (index + 1) % MAX_SIZE;
+		/* 	index = (index + 1) % MAX_SIZE; */
 
-		}
+		/* } */
 		
 		// Insert into table
 		dict->table[dict->head] = strdup(key);
