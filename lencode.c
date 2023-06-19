@@ -57,7 +57,9 @@ struct KeyValue *initKeyValue(char *key, int value) {
 	return pair;
 }
 
-// TODO - REPLACE LINEAR PROBING WITH SEPARATE CHAINING TO AVOID 15 BIT LOOKUPS WHEN TABLE IS FULL
+/*
+ *	Retrieves the value (array index) associated with the given key argument
+ */
 int get(struct SymbolTable *dict, char *key) {
 	uint32_t index = hash(key);
 	
@@ -72,36 +74,24 @@ int get(struct SymbolTable *dict, char *key) {
 		}
 	}
 	return -1;
-	
-	// Linear Probing retrieval
-	/* int count = 0; */
-	/* while (count < MAX_SIZE) { */
-	/* 	count++; */
-
-	/* 	if (dict->hashMap[index] == NULL) { */
-	/* 		break; */
-	/* 	} */
-
-	/* 	if (dict->hashMap[index] != NULL && strcmp(dict->hashMap[index]->key, key) == 0) { */
-	/* 		return dict->hashMap[index]->value; */
-	/* 	} */
-
-	/* 	index = (index + 1) % MAX_SIZE; */
-
-	/* } */
 }
 
+/*
+ *	Returns whether the given key is in the symboltable
+ */
 bool keyInTable(struct SymbolTable *dict, char *key) {
 	return get(dict, key) != -1;
 }
 
+/*
+ *	Inserts the given key into the symboltable
+ */
 void insert(struct SymbolTable *dict, char *key) {
 	if (dict->head < MAX_SIZE && !keyInTable(dict, key)) { 
 		// Hash the key
 		uint32_t index = hash(key);
 
 		// Insert into hashmap (separate chaining)
-		// find insertion point
 		if (dict->hashMap[index] == NULL) {
 			dict->hashMap[index] = initKeyValue(key, dict->head);
 		} else {
@@ -112,28 +102,12 @@ void insert(struct SymbolTable *dict, char *key) {
 			cur->next = initKeyValue(key, dict->head); 
 		}
 		
-		// Insert into hashmap (handling collisions with linear probing)
-		/* int count = 0; */
-		/* while (count < MAX_SIZE) { */
-		/* 	count++; */
-
-		/* 	if (dict->hashMap[index] == NULL) { */
-		/* 		dict->hashMap[index] = initKeyValue(key, dict->head); */
-		/* 		break; */
-		/* 	} */
-
-		/* 	index = (index + 1) % MAX_SIZE; */
-
-		/* } */
-		
 		// Insert into table
 		dict->table[dict->head] = strdup(key);
 		dict->head++;
 	}
 
 }
-
-
 
 // Encode Algorithm
 int main(int argc, char** argv) {
@@ -146,7 +120,7 @@ int main(int argc, char** argv) {
     struct SymbolTable *dict = initSymbolTable();
     encodeData(source, sourceSize, output, dict);
 
-    /* freeSymbolTable(dict); */
+    freeSymbolTable(dict);
     return 0;
 }
 
@@ -216,22 +190,6 @@ void freeSymbolTable(struct SymbolTable *dict) {
     free(dict);
 }
 
-void printUInt16AsBinary(uint16_t value) {
-    for (int i = sizeof(uint16_t) * 8 - 1; i >= 0; i--) {
-        uint16_t mask = (uint16_t)1 << i;
-        int bit = (value & mask) ? 1 : 0;
-        printf("%d", bit);
-    }
-    printf("\n");
-}
-
-void printCharAsBinary(char ch) {
-    for (int i = 7; i >= 0; i--) {
-        char bit = (ch >> i) & 1;
-        printf("%d", bit);
-    }
-}
-
 /*
  *  Applies LZW compression on the data of a given file, 
  *  outputting the result to a file named by the output parameter
@@ -282,12 +240,7 @@ void encodeData(char *source, long sourceSize, char *output, struct SymbolTable 
             prevSize = 2;
 
         }
-        /* printf("\n"); */
     }
-	printf("%s\n", pc);
-	printf("|%s|\n", prev);
-	printf("|%c|\n", cur);
-	printf("%ld\n", prevSize);
 
 	if (inTable) {
 		outputCode(prevSize, prev, code, f);
@@ -297,15 +250,6 @@ void encodeData(char *source, long sourceSize, char *output, struct SymbolTable 
 
     free(pc);
     free(prev);
-
-	printf("Num entries: %d", dict->head);
-    printf("\nFINAL-%s\n", encodedString);
-	for (int i=0;i<10;i++) {
-		if (dict->table[i] != NULL) {
-			printf("%d: %s\n",i,dict->table[i]);
-		}
-	}
-    /* fwrite(encodedString, strlen(encodedString), 1, f); */
     fclose(f);
 }
 
@@ -320,7 +264,6 @@ void outputCode(long prevSize, char *prev, uint16_t code, FILE* f) {
 		fwrite(prev, 1 , 2, f);	
 	} else {
 		code = (((1) << (sizeof(uint16_t)*8-1) ) | code);
-		/* printUInt16AsBinary(code); */
 		char LHS = (char)(code >> 8);
 		char RHS = (char)code;
 		fwrite(&LHS, sizeof(uint8_t), 1, f);
@@ -336,15 +279,6 @@ bool stringInSymbolTable(struct SymbolTable *dict, char *string, long pcSize, ui
     if (pcSize == 2) {
         return true;
     }
-
-	// Linear search implementation
-    /* for (int i = 0 ; i < MAX_SIZE ; i++) { */
-    /*     if (dict->table[i] != NULL && strcmp(string, dict->table[i]) == 0) { */
-			/* // stores 15-bit dict reference */
-    /*         *code = i; */
-    /*         return true; */
-    /*     } */
-    /* } */
 
 	// Hashmap implementation
 	if (keyInTable(dict, string)) {
@@ -371,5 +305,5 @@ void writeToFile(char *output, bool byte, uint16_t code, char character) {
         fprintf(f, "%c%c", code >> 8, code);
         printf("%c", (char)code);
     }
-
 }
+
