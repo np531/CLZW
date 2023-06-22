@@ -22,7 +22,7 @@ struct SymbolTable {
 
 FILE *initData(int argc, char **argv); 
 void initSourceString(FILE *f, long *sourceSize, char **sourceString); 
-void encodeData(char *source, long sourceSize, char *output, struct SymbolTable *dict); 
+void decodeData(char *source, long sourceSize, char *output, struct SymbolTable *dict); 
 void outputCode(long prevSize, char *prev, uint16_t code, FILE* f);
 void writeToFile(char *output, bool byte, uint16_t code, char character); 
 struct SymbolTable *initSymbolTable();
@@ -119,7 +119,7 @@ int main(int argc, char** argv) {
     initSourceString(f, &sourceSize, &source);
     struct SymbolTable *dict = initSymbolTable();
 
-    /* encodeData(source, sourceSize, output, dict); */
+    decodeData(source, sourceSize, output, dict);
 
     freeSymbolTable(dict);
     return 0;
@@ -191,11 +191,49 @@ void freeSymbolTable(struct SymbolTable *dict) {
     free(dict);
 }
 
+void printUInt16AsBinary(uint16_t num) {
+    // Iterate over each bit in the uint16_t
+    for (int i = 15; i >= 0; i--) {
+        // Check the value of the i-th bit using bitwise AND
+        if ((num >> i) & 1)
+            printf("1");
+        else
+            printf("0");
+
+        // Add a space between each byte (8 bits)
+        if (i % 8 == 0 && i != 0)
+            printf(" ");
+    }
+    printf("\n");
+}
+
+void printCharAsBinary(char c) {
+    // Iterate over each bit in the character
+    for (int i = 7; i >= 0; i--) {
+        // Check the value of the i-th bit using bitwise AND
+        if ((c >> i) & 1)
+            printf("1");
+        else
+            printf("0");
+    }
+    printf("\n");
+}
+
+void printNEntries(struct SymbolTable *d, int n) {
+	for (int i = 0 ; i < n ; i++) {
+		if (d->table[i] == NULL) {
+			printf("    %d - NULL\n", i);
+		} else {
+			printf("    %d - %s\n", i, d->table[i]);
+		}
+	}
+}
+
 /*
- *  Applies LZW compression on the data of a given file, 
+ *  Applies LZW decompression on the data of a given file, 
  *  outputting the result to a file named by the output parameter
  */
-void encodeData(char *source, long sourceSize, char *output, struct SymbolTable *dict) {
+void decodeData(char *source, long sourceSize, char *output, struct SymbolTable *dict) {
     // String holding p (and size)
     char *prev = (char*)calloc(1, sizeof(char)+1);
     long prevSize = 0;
@@ -207,50 +245,83 @@ void encodeData(char *source, long sourceSize, char *output, struct SymbolTable 
     
     // code temporarily stores the binary representation of a dictionary reference 
     uint16_t code = 0;
-    char *encodedString = (char*)malloc(sourceSize); 
     FILE *f = fopen(output, "wb");
 
-	// Flag set to true if the current pc is in the dict (used to handle cases
-	// when the last sequence of characters are in the dict, and thus nothing is output)
-	bool inTable;
+	cur = source[0];
+	// output c
+	fwrite(&cur, 1 , 1, f);
+	// p = c
+	prevSize = 2;
+	prev = (char*)realloc(prev, prevSize);
+	snprintf(prev, 2, "%c", cur);
 
-    for (long i = 0 ; i < sourceSize ; i++) {
-     /*   cur = source[i];
-		inTable = false;
+    for (long i = 1 ; i < sourceSize ; i++) {
+        cur = source[i];
+		if (((cur >> 7) & 1)) {
+			// cur is a dict reference
+			code = code | (cur << 8) | source[i+1];
+			code &= ~(1 << 15);
+			i++;
 
-        // TODO - replace strlen with DS to store prev size (to handle null bytes)
-        pcSize = strlen(prev) + sizeof(char) + 1;
-        pc = (char*)realloc(pc, pcSize);
-        snprintf(pc, pcSize, "%s%c", prev, cur);
+			// Handle case where current dict reference hasn't been allocated yet
+			if (code == dict->head) {
+				pcSize = strlen(prev) + sizeof(char) + 1;
+				pc = (char*)realloc(pc, pcSize);
+				snprintf(pc, pcSize, "%s%c", prev, prev[0]);
+				// output dict[c]
+				fwrite(pc, strlen(prev)+1, 1, f);
 
-        if (stringInSymbolTable(dict, pc, pcSize, &code)) {
-			inTable = true;
-            free(prev);
-            prev = strdup(pc);
-            prevSize = pcSize;
-        } else {
-            // Add pc to dict
-			insert(dict, pc);
+				// add p + Dict[c][0] to dict
+				insert(dict, pc);
 
-            // Output code(p)
-			outputCode(prevSize, prev, code, f);
+				// p = dict[c]
+				free(prev); 
+				prev = strdup(dict->table[code]);
+				prevSize = strlen(dict->table[code]); 
+			} else {
+				// output dict[c]
+				fwrite(dict->table[code], strlen(dict->table[code]), 1, f);
 
-            // p = c
-            prev = (char*)realloc(prev, sizeof(char)+1);
-            snprintf(prev, 2, "%c", cur);
-            prevSize = 2;
+				// add p + Dict[c][0] to dict
+				pcSize = strlen(prev) + sizeof(char) + 1;
+				pc = (char*)realloc(pc, pcSize);
+				snprintf(pc, pcSize, "%s%c", prev, dict->table[code][0]);
+				insert(dict, pc);
 
-        }*/
+				// p = dict[c]
+				free(prev); 
+				prev = strdup(dict->table[code]);
+				prevSize = strlen(dict->table[code]); 
+			}
+
+		} else {
+			// cur is a single char
+			fwrite(&cur, 1 , 1, f);
+
+			// add p + Dict[c][0] to dict
+			pcSize = strlen(prev) + sizeof(char) + 1;
+			pc = (char*)realloc(pc, pcSize);
+			snprintf(pc, pcSize, "%s%c", prev, cur);
+
+			// handle 2 length repeated sequences not being replaced
+			if (keyInTable(dict, pc)) {
+				free(prev);
+				prev = strdup(pc);
+				prevSize = strlen(pc)+1;
+			} else { 
+				insert(dict, pc);
+
+				// p = dict[c]
+				prevSize = 2;
+				prev = (char*)realloc(prev, prevSize);
+				snprintf(prev, prevSize, "%c", cur);
+			}
+		}
     }
 
-	/* if (inTable) { */
-	/* 	outputCode(prevSize, prev, code, f); */
-	/* } else { */
-	/* 	fwrite(&cur, 1,1,f); */
-	/* } */
-
-    free(pc);
     free(prev);
+    free(pc);
+
     fclose(f);
 }
 
