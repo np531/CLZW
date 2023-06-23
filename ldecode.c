@@ -191,34 +191,6 @@ void freeSymbolTable(struct SymbolTable *dict) {
     free(dict);
 }
 
-void printUInt16AsBinary(uint16_t num) {
-    // Iterate over each bit in the uint16_t
-    for (int i = 15; i >= 0; i--) {
-        // Check the value of the i-th bit using bitwise AND
-        if ((num >> i) & 1)
-            printf("1");
-        else
-            printf("0");
-
-        // Add a space between each byte (8 bits)
-        if (i % 8 == 0 && i != 0)
-            printf(" ");
-    }
-    printf("\n");
-}
-
-void printCharAsBinary(char c) {
-    // Iterate over each bit in the character
-    for (int i = 7; i >= 0; i--) {
-        // Check the value of the i-th bit using bitwise AND
-        if ((c >> i) & 1)
-            printf("1");
-        else
-            printf("0");
-    }
-    printf("\n");
-}
-
 void printNEntries(struct SymbolTable *d, int n) {
 	for (int i = 0 ; i < n ; i++) {
 		if (d->table[i] == NULL) {
@@ -247,6 +219,9 @@ void decodeData(char *source, long sourceSize, char *output, struct SymbolTable 
     uint16_t code = 0;
     FILE *f = fopen(output, "wb");
 
+	uint8_t LHS = 0;
+	uint8_t RHS = 0;
+
 	cur = source[0];
 	// output c
 	fwrite(&cur, 1 , 1, f);
@@ -257,9 +232,12 @@ void decodeData(char *source, long sourceSize, char *output, struct SymbolTable 
 
     for (long i = 1 ; i < sourceSize ; i++) {
         cur = source[i];
+		code = 0;
 		if (((cur >> 7) & 1)) {
 			// cur is a dict reference
-			code = code | (cur << 8) | source[i+1];
+			LHS = source[i];
+			RHS = source[i+1];
+			code =  (LHS << 8) | RHS;
 			code &= ~(1 << 15);
 			i++;
 
@@ -318,6 +296,7 @@ void decodeData(char *source, long sourceSize, char *output, struct SymbolTable 
 			}
 		}
     }
+	/* printNEntries(dict, 16); */
 
     free(prev);
     free(pc);

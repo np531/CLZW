@@ -189,6 +189,15 @@ void freeSymbolTable(struct SymbolTable *dict) {
     free(dict->table);
     free(dict);
 }
+void printNEntries(struct SymbolTable *d, int n) {
+	for (int i = 0 ; i < n ; i++) {
+		if (d->table[i] == NULL) {
+			printf("    %d - NULL\n", i);
+		} else {
+			printf("    %d - %s\n", i, d->table[i]);
+		}
+	}
+}
 
 /*
  *  Applies LZW compression on the data of a given file, 
